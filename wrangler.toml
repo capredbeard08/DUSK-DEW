@@ -1,0 +1,19 @@
+# Optional: for deploying to your own Cloudflare account with wrangler.
+# Freebuff Sites deployment uses freebuff.deploy.json instead.
+name = "dusk-and-dew"
+main = "dist/worker.js"
+compatibility_date = "2026-01-01"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "dusk-and-dew"
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+
+# Secrets (set with `wrangler secret put`, never in this file):
+#   PAYSTACK_SECRET_KEY, PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET, PAYPAL_WEBHOOK_ID,
+#   PAYMENT_WEBHOOK_SECRET, RESEND_API_KEY, EMAIL_FROM, FOUNDER_EMAIL, FOUNDER_PASSWORD,
+#   APP_ORIGIN

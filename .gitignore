@@ -1,0 +1,11 @@
+node_modules/
+dist/
+data/
+.env
+.env.local
+*.log
+.DS_Store
+
+.preview-founder-password
+.preview-founder-email
+.preview-webhook-secret

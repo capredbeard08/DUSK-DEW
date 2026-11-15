@@ -1,0 +1,19 @@
+{
+  "name": "dusk-and-dew",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "DUSK & DEW — international skincare storefront and founder operations platform (Cloudflare Worker + D1).",
+  "scripts": {
+    "dev": "node scripts/dev-server.mjs",
+    "test": "node --test --test-concurrency=1 tests/",
+    "build": "node scripts/build.mjs",
+    "check": "node scripts/check.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}
