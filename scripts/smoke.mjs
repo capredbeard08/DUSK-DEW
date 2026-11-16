@@ -1,7 +1,7 @@
 /** Quick end-to-end smoke check of the Worker routes. */
 import { createEnv, request, loginFounder } from '../tests/helpers.mjs';
 
-const env = createEnv();
+const env = await createEnv();
 
 for (const path of ['/', '/shop', '/shop/first-dew-hydrating-serum', '/ingredients', '/ingredients/glycerin', '/our-story', '/contact', '/shipping-and-returns', '/preorder-information', '/bag', '/checkout', '/admin/login', '/healthz']) {
   const res = await request(env, path);

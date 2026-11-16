@@ -62,6 +62,8 @@ const env = {
   APP_ORIGIN: process.env.APP_ORIGIN || `http://localhost:${PORT}`,
   FOUNDER_EMAIL: process.env.FOUNDER_EMAIL,
   FOUNDER_PASSWORD: process.env.FOUNDER_PASSWORD,
+  // Local development only: allows the documented default founder password.
+  ALLOW_DEV_DEFAULTS: '1',
   PAYSTACK_SECRET_KEY: process.env.PAYSTACK_SECRET_KEY,
   PAYPAL_CLIENT_ID: process.env.PAYPAL_CLIENT_ID,
   PAYPAL_CLIENT_SECRET: process.env.PAYPAL_CLIENT_SECRET,

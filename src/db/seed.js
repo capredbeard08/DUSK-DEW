@@ -207,12 +207,33 @@ const CONTENT = [
   ['announcement', 'Waitlist open', 'The first release is being finalised. Join the waitlist to be told first — no payment is taken.'],
 ];
 
+const DEV_FOUNDER_PASSWORD = 'DuskAndDew!2026';
+
+/**
+ * The founder bootstrap password must be supplied explicitly. A well-known
+ * default exists only for local development and only when ALLOW_DEV_DEFAULTS=1.
+ */
+export function resolveFounderPassword(env = {}) {
+  const supplied = env.FOUNDER_PASSWORD && String(env.FOUNDER_PASSWORD);
+  if (supplied) {
+    if (supplied.length < 12) {
+      throw new Error('FOUNDER_PASSWORD must be at least 12 characters.');
+    }
+    return supplied;
+  }
+  if (String(env.ALLOW_DEV_DEFAULTS) === '1') return DEV_FOUNDER_PASSWORD;
+  throw new Error('FOUNDER_PASSWORD is not set. Set it as a secret before the first request (local dev: set ALLOW_DEV_DEFAULTS=1).');
+}
+
 export async function seedDatabase(db, env = {}) {
   const existing = await one(db, 'SELECT value FROM settings WHERE key = ?', 'schema_version');
   const founder = await one(db, 'SELECT id FROM users LIMIT 1');
   // A partially completed seed (for example a platform crypto failure mid-run)
   // is repaired rather than treated as finished.
   if (existing && founder) return { seeded: false };
+
+  // Fail closed before writing anything: no password, no seed, no guessable account.
+  resolveFounderPassword(env);
 
   const now = nowIso();
 
@@ -238,7 +259,7 @@ export async function seedDatabase(db, env = {}) {
   }
 
   const founderEmail = (env.FOUNDER_EMAIL || 'founder@duskanddew.com').toLowerCase();
-  const founderPassword = env.FOUNDER_PASSWORD || 'DuskAndDew!2026';
+  const founderPassword = resolveFounderPassword(env);
   await run(
     db,
     `INSERT OR IGNORE INTO users (id, email, name, password_hash, role, is_active, must_change_password, created_at)
