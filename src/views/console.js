@@ -14,6 +14,7 @@ import {
   pager,
   STATUS_LABELS,
 } from './ui.js';
+import { CURRENCIES } from '../lib/pricing.js';
 
 const PRODUCT_STATUSES = ['draft', 'active', 'out_of_stock', 'temporarily_unavailable', 'discontinued'];
 const FULFILMENT_STATUSES = ['awaiting_payment', 'paid', 'processing', 'production_pending', 'ready_for_dispatch', 'shipped', 'delivered', 'cancelled', 'refunded', 'needs_attention'];
@@ -174,7 +175,7 @@ export function productsPage(base) {
 }
 
 export function productFormPage(base) {
-  const { product, categories, isNew } = base;
+  const { product, categories, isNew, prices = {} } = base;
   const p = product || {};
   const price = (p.price_cents || 0) / 100;
   const cost = p.cost_cents === null || p.cost_cents === undefined ? '' : (p.cost_cents / 100).toFixed(2);
@@ -208,8 +209,9 @@ export function productFormPage(base) {
         ${field({ label: 'Ingredient status', name: 'verification_status', type: 'select', value: p.verification_status || 'pending', options: [{ value: 'pending', label: 'Pending founder verification' }, { value: 'verified', label: 'Founder verified' }] })}
       </div>`)}
       ${panel('Pricing and stock', `<div class="form-grid">
-        ${field({ label: 'Price (USD)', name: 'price', type: 'number', value: price ? price.toFixed(2) : '', required: true, attrs: 'step="0.01" min="0"' })}
-        ${field({ label: 'Currency', name: 'currency', type: 'select', value: p.currency || 'USD', options: ['USD', 'GBP', 'EUR'].map((c) => ({ value: c, label: c })) })}
+        ${field({ label: 'Base price (in the currency below)', name: 'price', type: 'number', value: price ? price.toFixed(2) : '', required: true, attrs: 'step="0.01" min="0"' })}
+        ${field({ label: 'Currency', name: 'currency', type: 'select', value: p.currency || 'USD', options: CURRENCIES.map((c) => ({ value: c, label: c })) })}
+        ${CURRENCIES.map((c) => field({ label: `Price in ${c}`, name: `price_${c}`, type: 'number', value: Number.isInteger(prices[c]) ? (prices[c] / 100).toFixed(2) : '', attrs: 'step="0.01" min="0"', hint: c === (p.currency || 'USD') ? 'This is the base price above.' : 'Leave blank to not sell in this currency. No automatic conversion.' })).join('')}
         ${field({ label: 'Unit cost (USD, internal)', name: 'cost', type: 'number', value: cost, attrs: 'step="0.01" min="0"', hint: 'Used for margin reports only. Never shown publicly.' })}
         ${field({ label: 'Low-stock threshold', name: 'low_stock_threshold', type: 'number', value: p.low_stock_threshold ?? 10, attrs: 'min="0"' })}
         ${isNew ? field({ label: 'Opening physical stock', name: 'opening_stock', type: 'number', value: '0', attrs: 'min="0"', hint: 'Records an initial restock entry in the inventory ledger.' }) : ''}
@@ -229,8 +231,9 @@ export function productFormPage(base) {
         <button class="btn btn-dark" type="submit">${isNew ? 'Create product' : 'Save changes'}</button>
         <a class="btn btn-quiet" href="/admin/products">Cancel</a>
         ${!isNew && p.status !== 'discontinued' ? `<button class="btn btn-danger" type="submit" name="action" value="archive" data-confirm="Archive this product? It will be removed from the storefront but its order history is kept.">Archive product</button>` : ''}
+        ${!isNew ? `<button class="btn btn-danger" type="submit" name="action" value="delete" data-confirm="Permanently delete this product? This cannot be undone. Products that appear on orders cannot be deleted.">Delete product</button>` : ''}
       </div>
-      ${!isNew ? `<p class="fine">Products are archived, never deleted, so that order and inventory history stays intact.</p>` : ''}
+      ${!isNew ? `<p class="fine">Products that have been ordered can only be archived, so order history stays intact. A product that has never been ordered can be deleted for good.</p>` : ''}
     </form>`,
   });
 }
@@ -910,12 +913,39 @@ export function paymentsPage(base) {
 }
 
 export function shippingPage(base) {
-  const { countries, currency } = base;
+  const { countries, currency, zones = [], zoneOf = {} } = base;
+  const zoneForm = (z) => {
+    const id = z ? z.id : '';
+    return `<form method="post" action="/admin/shipping/zones${id ? `/${h(id)}` : ''}" class="${id ? 'panel ' : ''}console-form">
+        ${csrfInput(base.csrf)}
+        ${id ? `<div class="panel-head"><h2>${h(z.name)} <span class="fine">${h(z.currency)}</span></h2></div>` : ''}
+        <div class="form-grid">
+          ${field({ label: 'Zone name', name: 'name', value: z ? z.name : '', required: true, placeholder: 'United Kingdom' })}
+          ${field({ label: 'Currency', name: 'currency', type: 'select', value: z ? z.currency : 'USD', options: CURRENCIES.map((c) => ({ value: c, label: c })), hint: 'Customers in this zone are charged in this currency. Each product needs a price in it.' })}
+          ${field({ label: 'Shipping charge', name: 'shipping', type: 'number', value: z ? (z.shipping_cents / 100).toFixed(2) : '', required: true, attrs: 'step="0.01" min="0"' })}
+          ${field({ label: 'Free shipping over', name: 'free_over', type: 'number', value: z && z.free_over_cents ? (z.free_over_cents / 100).toFixed(2) : '', attrs: 'step="0.01" min="0"', hint: 'Blank = never free.' })}
+          ${field({ label: 'Duties handling', name: 'duties_mode', type: 'select', value: z ? z.duties_mode : 'ddu', options: [{ value: 'ddu', label: 'DDU: customer pays customs on delivery' }, { value: 'ddp', label: 'DDP: collect an estimated duty at checkout' }] })}
+          ${field({ label: 'Estimated duty rate (%)', name: 'duty_pct', type: 'number', value: z ? (z.duty_bps / 100).toString() : '0', attrs: 'step="0.01" min="0" max="100"', hint: 'Only charged when handling is DDP. You carry the risk if the estimate is wrong.' })}
+          ${field({ label: 'Delivery estimate', name: 'delivery_estimate', value: z ? z.delivery_estimate || '' : '' })}
+          ${field({ label: 'Customs note', name: 'customs_note', type: 'textarea', value: z ? z.customs_note || '' : '', rows: 2 })}
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-dark" type="submit">${id ? 'Save zone' : 'Create zone'}</button>
+          ${id ? `<button class="btn btn-danger" type="submit" name="action" value="delete" data-confirm="Delete this zone? Its countries fall back to their own shipping charge.">Delete zone</button>` : ''}
+        </div>
+      </form>`;
+  };
   return page(base, {
     title: 'Shipping',
-    subtitle: 'Only enabled destinations accept orders. Charges are configured by the founder.',
+    subtitle: 'Zones set currency, shipping and duties. Only enabled destinations accept orders.',
     active: 'shipping',
-    body: `<div class="alert alert-info"><strong>No shipping price is assumed by the platform.</strong><p>A destination without a shipping charge cannot be offered at checkout. Set the charge once you have a verified carrier quote.</p></div>
+    body: `<div class="alert alert-info"><strong>No shipping price is assumed by the platform.</strong><p>Group countries into zones, then assign each destination below to a zone. A destination with no zone uses its own charge in the store's default currency (${h(currency)}).</p></div>
+    <h2 class="section-title">Zones</h2>
+    <div class="console-grid-2">
+      ${zones.map((z) => zoneForm(z)).join('')}
+    </div>
+    ${panel('Add a zone', zoneForm(null))}
+    <h2 class="section-title">Destinations</h2>
     <div class="console-grid-2">
       ${countries
         .map(
@@ -923,10 +953,14 @@ export function shippingPage(base) {
             ${csrfInput(base.csrf)}
             <div class="panel-head"><h2>${h(c.name)} <span class="fine">${h(c.code)}</span></h2></div>
             ${field({ label: 'Enabled for sale', name: 'enabled', type: 'select', value: String(c.enabled), options: [{ value: '0', label: 'Disabled' }, { value: '1', label: 'Enabled' }] })}
+            ${field({ label: 'Zone', name: 'zone_id', type: 'select', value: zoneOf[c.code] || '', options: [{ value: '', label: 'No zone (own charge, default currency)' }].concat(zones.map((z) => ({ value: z.id, label: `${z.name} (${z.currency})` }))) })}
             ${field({ label: `Shipping charge (${currency})`, name: 'shipping', type: 'number', step: '0.01', min: '0', value: c.shipping_cents === null ? '' : (c.shipping_cents / 100).toFixed(2), hint: 'Leave blank if not yet quoted — checkout will refuse the destination.' })}
             ${field({ label: 'Delivery estimate', name: 'delivery_estimate', value: c.delivery_estimate || '', hint: 'Describe the range honestly; never guarantee a date.' })}
             ${field({ label: 'Customs / duties note', name: 'customs_note', type: 'textarea', value: c.customs_note || '', rows: 3 })}
-            <button class="btn btn-dark" type="submit">Save destination</button>
+            <div class="form-actions">
+              <button class="btn btn-dark" type="submit">Save destination</button>
+              <button class="btn btn-danger" type="submit" name="action" value="delete" data-confirm="Delete this destination?">Delete</button>
+            </div>
           </form>`,
         )
         .join('')}
@@ -1028,7 +1062,7 @@ export function settingsPage(base) {
           ${field({ label: 'Store name', name: 'store_name', value: settings.store_name || 'DUSK & DEW', required: true })}
           ${field({ label: 'Tagline', name: 'store_tagline', value: settings.store_tagline || '' })}
           ${field({ label: 'Support email', name: 'support_email', type: 'email', value: settings.support_email || '', hint: 'Shown on contact and footer. Use an address you actually monitor.' })}
-          ${field({ label: 'Default currency', name: 'default_currency', type: 'select', value: settings.default_currency || 'USD', options: ['USD', 'GBP', 'EUR'].map((c) => ({ value: c, label: c })) })}
+          ${field({ label: 'Default currency', name: 'default_currency', type: 'select', value: settings.default_currency || 'USD', options: CURRENCIES.map((c) => ({ value: c, label: c })) })}
           ${field({ label: 'Supported currencies', name: 'supported_currencies', value: settings.supported_currencies || 'USD', hint: 'Comma-separated. Prices are currently recorded per product.' })}
           ${field({ label: 'Preorders authorised', name: 'preorders_enabled', type: 'select', value: String(settings.preorders_enabled || '0'), options: [{ value: '0', label: 'Disabled — no paid preorders' }, { value: '1', label: 'Enabled for products opted in' }], hint: 'Only enable after manufacturing, regulatory, shipping and payment arrangements are verified.' })}
           ${field({ label: 'Social — Instagram', name: 'social_instagram', value: settings.social_instagram || '' })}
@@ -1050,9 +1084,18 @@ export function settingsPage(base) {
       )}
     </div>
     ${panel(
+      'Sample data',
+      `<p>The platform was set up with a demonstration order, customer, waitlist entry and production batch. They distort your reports. Remove them once you have seen how they look. Real orders are never touched.</p>
+       <form method="post" action="/admin/settings/purge-sample">
+         ${csrfInput(base.csrf)}
+         <button class="btn btn-danger" type="submit" data-confirm="Remove the sample order, customer, waitlist entry and sample batch? This cannot be undone.">Remove sample data</button>
+       </form>
+       <p class="fine">Products, categories, ingredients and page content are edited or deleted from their own screens.</p>`,
+    )}
+    ${panel(
       'Operational safeguards',
       `<ul class="plain-list">
-        <li>Orders, payments, refunds and inventory movements are append-only records. Products are archived, never deleted.</li>
+        <li>Orders, payments, refunds and inventory movements are append-only records. Products that have been ordered are archived, never deleted.</li>
         <li>Successful payments deduct stock exactly once; repeated webhooks are ignored by unique event key.</li>
         <li>Stock reservations expire after 30 minutes and release automatically.</li>
         <li>Paid orders that cannot be fulfilled are flagged <em>needs attention</em> instead of silently failing.</li>

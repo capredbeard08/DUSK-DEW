@@ -88,3 +88,69 @@ export async function quoteOrder(db, { country, lines, defaultCurrency = 'USD' }
   }
   return { ok: true, currency, subtotal, shipping, duties, total: subtotal + shipping + duties, zone: zone || null, lines: priced };
 }
+
+/** "12.50" -> 1250; blank/invalid -> null. */
+export function toCents(value) {
+  const text = String(value ?? '').trim().replace(/,/g, '');
+  if (!/^\d+(\.\d{1,2})?$/.test(text)) return null;
+  return Math.round(Number(text) * 100);
+}
+
+/**
+ * Persist explicit prices from a product form. The base currency's price comes
+ * from the main price field; every other currency from `price_<CODE>` (blank =
+ * not sold in that currency).
+ */
+export async function savePrices(db, productId, form, baseCurrency, baseCents, now) {
+  const statements = [];
+  for (const code of CURRENCIES) {
+    const cents = code === baseCurrency ? baseCents : toCents(form.get(`price_${code}`));
+    if (cents === null || cents === undefined) {
+      statements.push(db.prepare('DELETE FROM product_prices WHERE product_id = ? AND currency = ?').bind(productId, code));
+    } else {
+      statements.push(
+        db
+          .prepare(
+            `INSERT INTO product_prices (product_id, currency, price_cents, updated_at) VALUES (?, ?, ?, ?)
+             ON CONFLICT(product_id, currency) DO UPDATE SET price_cents = excluded.price_cents, updated_at = excluded.updated_at`,
+          )
+          .bind(productId, code, cents, now),
+      );
+    }
+  }
+  await db.batch(statements);
+}
+
+/** Hard-delete a product that has never been ordered. Otherwise refuse (archive instead). */
+export async function deleteProductIfUnused(db, productId) {
+  const used = await one(db, 'SELECT COUNT(*) AS n FROM order_items WHERE product_id = ?', productId);
+  if (used && used.n > 0) return { ok: false, error: 'This product appears on orders, so it cannot be deleted. Archive it instead.' };
+  const live = await one(db, 'SELECT COUNT(*) AS n FROM inventory_reservations WHERE product_id = ?', productId);
+  if (live && live.n > 0) return { ok: false, error: 'This product has stock reservations. Archive it instead.' };
+  await db.batch(
+    ['inventory_movements', 'restocks', 'stock_adjustments', 'batch_items'].map((table) =>
+      db.prepare(`DELETE FROM ${table} WHERE product_id = ?`).bind(productId),
+    ).concat([db.prepare('DELETE FROM products WHERE id = ?').bind(productId)]),
+  );
+  return { ok: true };
+}
+
+/** Remove the demonstration records created by the seed. Real orders are never touched. */
+export async function purgeSampleData(db) {
+  const orders = await all(db, `SELECT id FROM orders WHERE payment_provider = 'sample'`);
+  const statements = [];
+  for (const { id } of orders) {
+    statements.push(db.prepare('DELETE FROM inventory_movements WHERE reference_type = ? AND reference_id = ?').bind('order', id));
+    statements.push(db.prepare('DELETE FROM refunds WHERE order_id = ?').bind(id));
+    statements.push(db.prepare('DELETE FROM inventory_reservations WHERE order_id = ?').bind(id));
+    statements.push(db.prepare('DELETE FROM orders WHERE id = ?').bind(id));
+  }
+  statements.push(db.prepare(`DELETE FROM customers WHERE email = 'sample.customer@example.com' AND id NOT IN (SELECT customer_id FROM orders WHERE customer_id IS NOT NULL)`));
+  statements.push(db.prepare(`DELETE FROM waitlist WHERE email = 'sample.waitlist@example.com'`));
+  statements.push(
+    db.prepare(`DELETE FROM production_batches WHERE reference = 'BATCH-2026-01' AND id NOT IN (SELECT batch_id FROM batch_items WHERE received_qty > 0)`),
+  );
+  statements.push(db.prepare(`UPDATE inventory SET units_sold = 0 WHERE product_id = 'prd_serum' AND units_sold = 1`));
+  await db.batch(statements);
+  return { orders: orders.length };
+}

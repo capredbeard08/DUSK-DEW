@@ -5,6 +5,7 @@ import { csvResponse, parseDollars, readForm, redirect, html, intOr } from '../l
 import { dashboardData, analyticsData, inventorySummary } from '../lib/reports.js';
 import { providerConfigured, offlinePaymentsEnabled, enabledProviders } from '../lib/payments.js';
 import { deliverQueuedEmails } from '../lib/email.js';
+import { CURRENCIES, purgeSampleData, toCents } from '../lib/pricing.js';
 import {
   analyticsPage,
   contentPage,
@@ -210,7 +211,51 @@ export async function handleAdminSystem({ db, request, env, url, path, method, a
       return redirect('/admin/shipping?notice=Destination%20added%20(disabled%20until%20you%20enable%20it)');
     }
     const countries = await all(db, 'SELECT * FROM supported_countries ORDER BY sort_order, name');
-    return html(shippingPage({ ...base, countries, currency: settings.default_currency || 'USD' }), 200);
+    const zones = await all(db, 'SELECT * FROM shipping_zones ORDER BY name');
+    const links = await all(db, 'SELECT country_code, zone_id FROM country_zone');
+    const zoneOf = Object.fromEntries(links.map((l) => [l.country_code, l.zone_id]));
+    return html(shippingPage({ ...base, countries, zones, zoneOf, currency: settings.default_currency || 'USD' }), 200);
+  }
+
+  if (path.startsWith('/admin/shipping/zones') && method === 'POST') {
+    if (!can(auth.user, 'settings.manage')) return forbidden();
+    const { form, ok } = await postForm(request, auth);
+    if (!ok) return forbidden();
+    const zoneId = path.split('/')[4] || null;
+    if (zoneId && form.get('action') === 'delete') {
+      const zone = await one(db, 'SELECT * FROM shipping_zones WHERE id = ?', zoneId);
+      if (!zone) return redirect('/admin/shipping?error=Zone%20not%20found');
+      await db.batch([
+        db.prepare('DELETE FROM country_zone WHERE zone_id = ?').bind(zoneId),
+        db.prepare('DELETE FROM shipping_zones WHERE id = ?').bind(zoneId),
+      ]);
+      await audit(db, { userId: auth.user.id, actorEmail: auth.user.email, action: 'shipping.zone_deleted', entityType: 'zone', entityId: zoneId, details: { name: zone.name }, ip: clientIp(request) });
+      return redirect('/admin/shipping?notice=Zone%20deleted.%20Its%20countries%20fall%20back%20to%20their%20own%20shipping%20charge.');
+    }
+    const name = cleanText(form.get('name'), 80);
+    const currency = String(form.get('currency') || '').toUpperCase();
+    const shipping = toCents(form.get('shipping'));
+    const freeOver = form.get('free_over') === '' || form.get('free_over') === null ? null : toCents(form.get('free_over'));
+    const dutyPct = form.get('duty_pct') === '' || form.get('duty_pct') === null ? 0 : Number(form.get('duty_pct'));
+    if (!name || !CURRENCIES.includes(currency) || shipping === null || (freeOver !== null && freeOver <= 0) || !Number.isFinite(dutyPct) || dutyPct < 0 || dutyPct > 100) {
+      return redirect('/admin/shipping?error=Enter%20a%20name%2C%20a%20currency%2C%20a%20shipping%20charge%20and%20a%20duty%20rate%20between%200%20and%20100%25.');
+    }
+    const mode = form.get('duties_mode') === 'ddp' ? 'ddp' : 'ddu';
+    const bps = Math.round(dutyPct * 100);
+    const fields = [name, currency, shipping, freeOver, cleanText(form.get('delivery_estimate'), 300) || null, mode, bps, cleanText(form.get('customs_note'), 1000) || null];
+    try {
+      if (zoneId) {
+        if (!(await one(db, 'SELECT id FROM shipping_zones WHERE id = ?', zoneId))) return redirect('/admin/shipping?error=Zone%20not%20found');
+        await run(db, 'UPDATE shipping_zones SET name = ?, currency = ?, shipping_cents = ?, free_over_cents = ?, delivery_estimate = ?, duties_mode = ?, duty_bps = ?, customs_note = ? WHERE id = ?', ...fields, zoneId);
+      } else {
+        await run(db, 'INSERT INTO shipping_zones (name, currency, shipping_cents, free_over_cents, delivery_estimate, duties_mode, duty_bps, customs_note, id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', ...fields, uid('zn_'), nowIso());
+      }
+    } catch (err) {
+      if (/UNIQUE/i.test(String(err))) return redirect('/admin/shipping?error=A%20zone%20with%20that%20name%20already%20exists.');
+      throw err;
+    }
+    await audit(db, { userId: auth.user.id, actorEmail: auth.user.email, action: zoneId ? 'shipping.zone_updated' : 'shipping.zone_created', entityType: 'zone', entityId: zoneId || name, details: { currency, shipping, mode, bps }, ip: clientIp(request) });
+    return redirect(`/admin/shipping?notice=${zoneId ? 'Zone%20saved' : 'Zone%20created'}`);
   }
 
   if (path.startsWith('/admin/shipping/') && method === 'POST') {
@@ -220,6 +265,17 @@ export async function handleAdminSystem({ db, request, env, url, path, method, a
     const code = path.split('/')[3].toUpperCase();
     const country = await one(db, 'SELECT * FROM supported_countries WHERE code = ?', code);
     if (!country) return redirect('/admin/shipping?error=Destination%20not%20found');
+    if (form.get('action') === 'delete') {
+      await run(db, 'DELETE FROM supported_countries WHERE code = ?', code);
+      await audit(db, { userId: auth.user.id, actorEmail: auth.user.email, action: 'shipping.destination_deleted', entityType: 'country', entityId: code, ip: clientIp(request) });
+      return redirect('/admin/shipping?notice=Destination%20deleted');
+    }
+    const zoneChoice = cleanText(form.get('zone_id'), 40);
+    if (zoneChoice && (await one(db, 'SELECT id FROM shipping_zones WHERE id = ?', zoneChoice))) {
+      await run(db, 'INSERT INTO country_zone (country_code, zone_id) VALUES (?, ?) ON CONFLICT(country_code) DO UPDATE SET zone_id = excluded.zone_id', code, zoneChoice);
+    } else {
+      await run(db, 'DELETE FROM country_zone WHERE country_code = ?', code);
+    }
     const shipping = form.get('shipping') === '' ? null : parseDollars(form.get('shipping'));
     await run(
       db,
@@ -299,13 +355,22 @@ export async function handleAdminSystem({ db, request, env, url, path, method, a
     ]);
   }
 
+  if (path === '/admin/settings/purge-sample' && method === 'POST') {
+    if (!can(auth.user, 'settings.manage')) return forbidden();
+    const { ok } = await postForm(request, auth);
+    if (!ok) return forbidden();
+    const result = await purgeSampleData(db);
+    await audit(db, { userId: auth.user.id, actorEmail: auth.user.email, action: 'settings.sample_data_removed', entityType: 'system', entityId: 'sample', details: result, ip: clientIp(request) });
+    return redirect('/admin/settings?notice=Sample%20orders%2C%20customer%2C%20waitlist%20entry%20and%20batch%20removed');
+  }
+
   if (path === '/admin/settings') {
     if (!can(auth.user, 'settings.manage')) return forbidden();
     if (method === 'POST') {
       const { form, ok } = await postForm(request, auth);
       if (!ok) return forbidden();
       const current = await settingsMap(db);
-      const allowedCurrency = ['USD', 'GBP', 'EUR'];
+      const allowedCurrency = CURRENCIES;
       await setSetting(db, 'store_name', cleanText(form.get('store_name'), 80) || current.store_name || 'DUSK & DEW');
       await setSetting(db, 'store_tagline', cleanText(form.get('store_tagline'), 160) || current.store_tagline || '');
       await setSetting(db, 'support_email', cleanText(form.get('support_email'), 254) || '');
