@@ -86,7 +86,9 @@ export async function quoteOrder(db, { country, lines, defaultCurrency = 'USD' }
   if (zone && zone.duties_mode === 'ddp' && zone.duty_bps > 0) {
     duties = Math.round((subtotal * Number(zone.duty_bps)) / 10000);
   }
-  return { ok: true, currency, subtotal, shipping, duties, total: subtotal + shipping + duties, zone: zone || null, lines: priced };
+  const total = subtotal + shipping + duties;
+  if (!(total > 0)) return { ok: false, error: 'This order has no payable total. Please contact us to complete it.' };
+  return { ok: true, currency, subtotal, shipping, duties, total, zone: zone || null, lines: priced };
 }
 
 /** "12.50" -> 1250; blank/invalid -> null. */

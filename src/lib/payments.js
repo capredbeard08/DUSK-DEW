@@ -173,20 +173,24 @@ export async function paypalToken(env) {
 /**
  * Mark an order paid after server-side verification. Safe to call repeatedly.
  */
-export async function confirmOrderPayment(db, orderId, { provider, reference, providerReference, amountCents, eventId = null, actorEmail = null, userId = null }) {
+export async function confirmOrderPayment(db, orderId, { provider, reference, providerReference, amountCents, currency, eventId = null, actorEmail = null, userId = null }) {
   const order = await one(db, 'SELECT * FROM orders WHERE id = ?', orderId);
   if (!order) return { ok: false, error: 'order_not_found' };
   if (order.payment_status === 'paid') return { ok: true, alreadyProcessed: true };
   if (order.payment_status === 'refunded') return { ok: false, error: 'order_refunded' };
-  if (Number(amountCents) !== Number(order.total_cents)) {
+  // An order only becomes paid when the provider-reported amount AND currency
+  // both equal what we quoted. A missing currency is treated as a mismatch, and
+  // an order with no payable total can never be confirmed.
+  const currencyOk = typeof currency === 'string' && currency.toUpperCase() === String(order.currency).toUpperCase();
+  if (!(Number(order.total_cents) > 0) || !Number.isInteger(Number(amountCents)) || Number(amountCents) !== Number(order.total_cents) || !currencyOk) {
     await audit(db, {
       action: 'payment.amount_mismatch',
       entityType: 'order',
       entityId: order.id,
-      details: { expected: order.total_cents, received: amountCents, reference },
+      details: { expected: order.total_cents, expectedCurrency: order.currency, received: amountCents, receivedCurrency: currency || null, reference },
       actorEmail,
     });
-    await run(db, `UPDATE orders SET internal_notes = COALESCE(internal_notes,'') || ?, updated_at = ? WHERE id = ?`, `\n[${nowIso()}] Payment amount mismatch (expected ${order.total_cents}, got ${amountCents}).`, nowIso(), order.id);
+    await run(db, `UPDATE orders SET internal_notes = COALESCE(internal_notes,'') || ?, updated_at = ? WHERE id = ?`, `\n[${nowIso()}] Payment mismatch (expected ${order.total_cents} ${order.currency}, got ${amountCents} ${currency || 'no currency'}).`, nowIso(), order.id);
     return { ok: false, error: 'amount_mismatch' };
   }
 
@@ -349,6 +353,7 @@ async function processPaystackEvent(db, env, event) {
       reference: data.reference,
       providerReference: data.reference,
       amountCents: data.amount,
+      currency: data.currency,
       eventId,
     });
     return { status: 200, body: { received: true, result } };
@@ -388,7 +393,8 @@ async function processPaypalEvent(db, env, event) {
     .run();
   if (!dedupe.meta || dedupe.meta.changes !== 1) return { status: 200, body: { received: true, duplicate: true } };
 
-  if (event.event_type === 'PAYMENT.CAPTURE.COMPLETED' || event.event_type === 'CHECKOUT.ORDER.APPROVED') {
+  // Only a completed CAPTURE means money moved. An approved order has not been paid.
+  if (event.event_type === 'PAYMENT.CAPTURE.COMPLETED' && resource.status === 'COMPLETED' && resource.amount && resource.amount.value) {
     const payment = await one(
       db,
       `SELECT p.* FROM payments p WHERE p.provider = 'paypal' AND
@@ -398,12 +404,13 @@ async function processPaypalEvent(db, env, event) {
       resource.purchase_units?.[0]?.reference_id,
     );
     if (!payment) return { status: 200, body: { received: true, ignored: true } };
-    const amount = resource.amount ? Math.round(Number(resource.amount.value) * 100) : payment.amount_cents;
+    const amount = Math.round(Number(resource.amount.value) * 100);
     const result = await confirmOrderPayment(db, payment.order_id, {
       provider: 'paypal',
       reference: payment.reference,
       providerReference: resource.id,
       amountCents: amount,
+      currency: resource.amount.currency_code,
       eventId,
     });
     return { status: 200, body: { received: true, result } };
@@ -431,8 +438,10 @@ export async function verifyReturn(db, env, order) {
         reference: payment.reference,
         providerReference: data.data.reference,
         amountCents: data.data.amount,
+        currency: data.data.currency,
       });
-      return { ok: true };
+      const refreshed = await one(db, 'SELECT payment_status FROM orders WHERE id = ?', order.id);
+      return refreshed && refreshed.payment_status === 'paid' ? { ok: true } : { ok: false, error: 'amount_mismatch' };
     }
     return { ok: false, error: 'not_successful' };
   }
@@ -442,16 +451,27 @@ export async function verifyReturn(db, env, order) {
     const res = await fetch(`${paypalBase(env)}/v1/checkout/orders/${payment.provider_reference}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    const data = await res.json().catch(() => ({}));
-    if (data.status === 'COMPLETED' || data.status === 'APPROVED') {
-      const amount = Math.round(Number(data.purchase_units?.[0]?.amount?.value || 0) * 100);
+    let data = await res.json().catch(() => ({}));
+    // The buyer approving an order moves no money: the merchant must capture it.
+    if (data.status === 'APPROVED') {
+      const captureRes = await fetch(`${paypalBase(env)}/v2/checkout/orders/${encodeURIComponent(payment.provider_reference)}/capture`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'PayPal-Request-Id': `capture-${payment.reference}` },
+        body: '{}',
+      });
+      data = await captureRes.json().catch(() => ({}));
+    }
+    const capture = data.purchase_units?.[0]?.payments?.captures?.[0];
+    if (data.status === 'COMPLETED' && capture && capture.status === 'COMPLETED' && capture.amount) {
       await confirmOrderPayment(db, order.id, {
         provider: 'paypal',
         reference: payment.reference,
-        providerReference: data.id,
-        amountCents: amount,
+        providerReference: capture.id,
+        amountCents: Math.round(Number(capture.amount.value) * 100),
+        currency: capture.amount.currency_code,
       });
-      return { ok: true };
+      const refreshed = await one(db, 'SELECT payment_status FROM orders WHERE id = ?', order.id);
+      return refreshed && refreshed.payment_status === 'paid' ? { ok: true } : { ok: false, error: 'amount_mismatch' };
     }
     return { ok: false, error: 'not_successful' };
   }
@@ -472,6 +492,7 @@ export async function completeOfflinePayment(db, env, reference) {
     reference,
     providerReference: reference,
     amountCents: payment.amount_cents,
+    currency: payment.currency,
     eventId: `offline:${reference}`,
   });
 }

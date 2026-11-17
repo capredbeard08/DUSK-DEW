@@ -54,6 +54,12 @@ export async function handleAdminLogin({ db, request, env, path, method }) {
     return html(consoleLoginPage({ error: 'Too many attempts. Try again in 15 minutes.', csrf: ctx.csrf }), 429, ctx.cookies);
   }
   const email = cleanText(form.get('email'), 254).toLowerCase();
+  // Per-account throttle so a botnet cannot guess one account from many addresses.
+  const accountLimit = await rateLimit(db, `adminlogin_acct:${email}`, 12, 900);
+  if (!accountLimit.allowed) {
+    await audit(db, { action: 'auth.console_account_rate_limited', entityType: 'user', entityId: email, ip });
+    return html(consoleLoginPage({ error: 'Too many attempts. Try again in 15 minutes.', csrf: ctx.csrf }), 429, ctx.cookies);
+  }
   const password = String(form.get('password') || '');
   const user = await one(db, 'SELECT * FROM users WHERE email = ?', email);
   const valid = user && user.is_active && (await verifyPassword(password, user.password_hash));

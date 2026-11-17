@@ -465,6 +465,14 @@ async function handleCheckout({ db, request, env, url, ctx }) {
 
   const { subtotal, shipping, duties, total, currency } = quote;
 
+  // Anti-hoarding: unpaid orders hold stock for 30 minutes, so cap how many one
+  // buyer or one address can open at a time.
+  const openOrders = await one(db, `SELECT COUNT(*) AS n FROM orders WHERE email = ? AND payment_status IN ('unpaid','pending') AND placed_at > ?`, email, new Date(Date.now() - 30 * 60 * 1000).toISOString());
+  const creation = await rateLimit(db, `checkout_create:${clientIp(request)}`, 6, 1800);
+  if ((openOrders && openOrders.n >= 3) || !creation.allowed) {
+    return redirect('/checkout?error=You%20have%20several%20orders%20awaiting%20payment.%20Please%20complete%20or%20wait%20for%20them%20to%20expire.');
+  }
+
   let customer = await one(db, 'SELECT * FROM customers WHERE email = ?', email);
   if (customer) {
     await run(db, 'UPDATE customers SET name = ?, country = ? WHERE id = ?', name, country.code, customer.id);
