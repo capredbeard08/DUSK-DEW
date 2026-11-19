@@ -11,6 +11,7 @@ import { handleAccount } from './routes/account.js';
 import { handleAdmin, handleAdminLogin } from './routes/admin.js';
 import { handleAdminSales } from './routes/admin-sales.js';
 import { handleAdminSystem } from './routes/admin-system.js';
+import { handleAdminCatalogue } from './routes/admin-catalogue.js';
 import { notFoundPage } from './views/public.js';
 
 const ROBOTS = `User-agent: *
@@ -72,7 +73,7 @@ export default {
           return new Response(null, { status: 303, headers });
         }
         const args = { db, request, env, url, path, method, auth };
-        const response = (await handleAdmin(args)) || (await handleAdminSales(args)) || (await handleAdminSystem(args));
+        const response = (await handleAdmin(args)) || (await handleAdminCatalogue(args)) || (await handleAdminSales(args)) || (await handleAdminSystem(args));
         if (response) return response;
         return html('<h1>Console page not found</h1>', 404);
       }

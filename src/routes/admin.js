@@ -18,6 +18,7 @@ import { parseDollars, publicContext, readForm, redirect, html, intOr, booleanis
 import { adjustStock, inventoryRow, releaseOrderReservations, restockProduct, expireReservations } from '../lib/inventory.js';
 import { dashboardData, inventorySummary } from '../lib/reports.js';
 import { CURRENCIES, savePrices, deleteProductIfUnused } from '../lib/pricing.js';
+import { saveProductIngredients } from './admin-catalogue.js';
 import { consoleLoginPage, overviewPage, productsPage, productFormPage, inventoryPage, inventoryDetailPage, restocksPage } from '../views/console.js';
 
 const consoleBase = (auth, settings, request) => ({
@@ -128,7 +129,8 @@ export async function handleAdmin({ db, request, env, url, path, method, auth })
 
   if (path === '/admin/products/new' && method === 'GET') {
     const categories = await all(db, 'SELECT * FROM categories ORDER BY sort_order');
-    return html(productFormPage({ ...base, product: null, categories, isNew: true }), 200);
+    const ingredients = await all(db, 'SELECT id, inci_name FROM ingredients ORDER BY inci_name');
+    return html(productFormPage({ ...base, product: null, categories, ingredients, selected: {}, isNew: true }), 200);
   }
 
   if (path === '/admin/products' && method === 'POST') {
@@ -193,6 +195,7 @@ export async function handleAdmin({ db, request, env, url, path, method, auth })
     );
     await run(db, 'INSERT INTO inventory (product_id, physical_stock, reserved_stock, units_sold, updated_at) VALUES (?, 0, 0, 0, ?)', id, now);
     await savePrices(db, id, form, CURRENCIES.includes(form.get('currency')) ? form.get('currency') : 'USD', price, now);
+    await saveProductIngredients(db, id, form);
     const opening = Math.max(0, intOr(form.get('opening_stock'), 0));
     if (opening > 0) {
       await restockProduct(db, {
@@ -272,6 +275,7 @@ export async function handleAdmin({ db, request, env, url, path, method, auth })
     );
     await run(db, 'INSERT OR IGNORE INTO inventory (product_id, physical_stock, reserved_stock, units_sold, updated_at) VALUES (?, 0, 0, 0, ?)', id, nowIso());
     await savePrices(db, id, form, CURRENCIES.includes(form.get('currency')) ? form.get('currency') : 'USD', price, nowIso());
+    await saveProductIngredients(db, id, form);
     await audit(db, { userId: auth.user.id, actorEmail: auth.user.email, action: 'product.updated', entityType: 'product', entityId: id, details: { name, price, status }, ip: clientIp(request) });
     return redirect(`/admin/products/${id}?notice=Changes%20saved`);
   }
@@ -283,7 +287,10 @@ export async function handleAdmin({ db, request, env, url, path, method, auth })
     const categories = await all(db, 'SELECT * FROM categories ORDER BY sort_order');
     const priceRows = await all(db, 'SELECT currency, price_cents FROM product_prices WHERE product_id = ?', id);
     const prices = Object.fromEntries(priceRows.map((r) => [r.currency, r.price_cents]));
-    return html(productFormPage({ ...base, product, categories, prices, isNew: false }), 200);
+    const ingredients = await all(db, 'SELECT id, inci_name FROM ingredients ORDER BY inci_name');
+    const linked = await all(db, 'SELECT ingredient_id, position FROM product_ingredients WHERE product_id = ?', id);
+    const selected = Object.fromEntries(linked.map((r) => [r.ingredient_id, r.position]));
+    return html(productFormPage({ ...base, product, categories, prices, ingredients, selected, isNew: false }), 200);
   }
 
   if (path === '/admin/inventory') {

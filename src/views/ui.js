@@ -298,7 +298,7 @@ ${announcement}
 
 const CONSOLE_NAV = [
   { group: 'Business', items: [['/admin', 'Overview', 'overview']] },
-  { group: 'Catalogue', items: [['/admin/products', 'Products', 'products'], ['/admin/inventory', 'Inventory', 'inventory'], ['/admin/restocks', 'Restocking', 'restocks']] },
+  { group: 'Catalogue', items: [['/admin/products', 'Products', 'products'], ['/admin/categories', 'Categories', 'categories'], ['/admin/ingredients', 'Ingredients', 'ingredients'], ['/admin/inventory', 'Inventory', 'inventory'], ['/admin/restocks', 'Restocking', 'restocks']] },
   { group: 'Sales', items: [['/admin/orders', 'Orders', 'orders'], ['/admin/customers', 'Customers', 'customers'], ['/admin/preorders', 'Preorders & waitlist', 'preorders']] },
   { group: 'Production', items: [['/admin/batches', 'Production batches', 'batches']] },
   { group: 'Insights', items: [['/admin/analytics', 'Analytics', 'analytics']] },
