@@ -298,7 +298,7 @@ ${announcement}
 
 const CONSOLE_NAV = [
   { group: 'Business', items: [['/admin', 'Overview', 'overview']] },
-  { group: 'Catalogue', items: [['/admin/products', 'Products', 'products'], ['/admin/inventory', 'Inventory', 'inventory'], ['/admin/restocks', 'Restocking', 'restocks']] },
+  { group: 'Catalogue', items: [['/admin/products', 'Products', 'products'], ['/admin/categories', 'Categories', 'categories'], ['/admin/ingredients', 'Ingredients', 'ingredients'], ['/admin/inventory', 'Inventory', 'inventory'], ['/admin/restocks', 'Restocking', 'restocks']] },
   { group: 'Sales', items: [['/admin/orders', 'Orders', 'orders'], ['/admin/customers', 'Customers', 'customers'], ['/admin/preorders', 'Preorders & waitlist', 'preorders']] },
   { group: 'Production', items: [['/admin/batches', 'Production batches', 'batches']] },
   { group: 'Insights', items: [['/admin/analytics', 'Analytics', 'analytics']] },
@@ -320,9 +320,11 @@ export function consoleLayout({ title, body, active = '', user, searchParams = n
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${h(title)} · DUSK &amp; DEW Founder Console</title>
 <meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#142a21">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300..600&family=Hanken+Grotesk:wght@300;400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/styles.css">
+<link rel="stylesheet" href="/console.css">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 </head>
 <body class="console">
@@ -341,6 +343,7 @@ export function consoleLayout({ title, body, active = '', user, searchParams = n
     </div>
   </div>
 </aside>
+<label for="console-nav-toggle" class="console-backdrop" aria-hidden="true"></label>
 <div class="console-main">
   <header class="console-top">
     <label for="console-nav-toggle" class="console-menu" aria-hidden="true">☰</label>
@@ -349,6 +352,7 @@ export function consoleLayout({ title, body, active = '', user, searchParams = n
       ${subtitle ? `<p class="console-subtitle">${h(subtitle)}</p>` : ''}
     </div>
     <div class="console-top-right">
+      <button class="jump-btn" type="button" data-jump aria-label="Jump to a page"><span aria-hidden="true">⌕</span><span>Jump to…</span><kbd>Ctrl K</kbd></button>
       <a class="btn btn-quiet" href="/admin/orders">Orders</a>
       <a class="btn btn-dark" href="/admin/products/new">Add product</a>
     </div>
@@ -357,6 +361,8 @@ export function consoleLayout({ title, body, active = '', user, searchParams = n
   <div class="console-body">${body}</div>
 </div>
 <script src="/app.js" defer></script>
+<script src="/vendor/gsap/gsap.min.js" defer></script>
+<script src="/console.js" defer></script>
 </body>
 </html>`;
 }

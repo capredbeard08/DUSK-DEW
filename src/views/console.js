@@ -175,7 +175,7 @@ export function productsPage(base) {
 }
 
 export function productFormPage(base) {
-  const { product, categories, isNew, prices = {} } = base;
+  const { product, categories, isNew, prices = {}, ingredients = [], selected = {} } = base;
   const p = product || {};
   const price = (p.price_cents || 0) / 100;
   const cost = p.cost_cents === null || p.cost_cents === undefined ? '' : (p.cost_cents / 100).toFixed(2);
@@ -233,6 +233,20 @@ export function productFormPage(base) {
         ${!isNew && p.status !== 'discontinued' ? `<button class="btn btn-danger" type="submit" name="action" value="archive" data-confirm="Archive this product? It will be removed from the storefront but its order history is kept.">Archive product</button>` : ''}
         ${!isNew ? `<button class="btn btn-danger" type="submit" name="action" value="delete" data-confirm="Permanently delete this product? This cannot be undone. Products that appear on orders cannot be deleted.">Delete product</button>` : ''}
       </div>
+      ${panel(
+        'Ingredients (INCI order)',
+        `<input type="hidden" name="ingredients_present" value="1">
+        ${
+          ingredients.length
+            ? `<ul class="ing-picker">${ingredients
+                .map(
+                  (i) => `<li><label><input type="checkbox" name="ing_${h(i.id)}" value="1" ${selected[i.id] ? 'checked' : ''}> <span>${h(i.inci_name)}</span></label><input type="number" name="ingpos_${h(i.id)}" value="${selected[i.id] || ''}" min="1" step="1" placeholder="#" aria-label="Position of ${h(i.inci_name)}"></li>`,
+                )
+                .join('')}</ul>`
+            : '<p class="fine">No ingredients exist yet.</p>'
+        }
+        <p class="fine">Tick what the product contains and number them in the order they must print, highest concentration first. <a href="/admin/ingredients">Manage ingredients</a></p>`,
+      )}
       ${!isNew ? `<p class="fine">Products that have been ordered can only be archived, so order history stays intact. A product that has never been ordered can be deleted for good.</p>` : ''}
     </form>`,
   });
