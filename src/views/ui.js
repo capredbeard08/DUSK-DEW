@@ -190,7 +190,7 @@ const NAV_LINKS = [
   ['/contact', 'Contact', 'contact'],
 ];
 
-export function publicLayout({ title, description = '', body, active = '', settings = {}, auth = null, searchParams = new URLSearchParams(), csrf = '' }) {
+export function publicLayout({ title, description = '', body, active = '', bodyClass = '', settings = {}, auth = null, searchParams = new URLSearchParams(), csrf = '' }) {
   const notice = noticeBar(searchParams);
   const nav = NAV_LINKS.map(
     ([href, label, key]) => `<a href="${href}" class="${active === key ? 'active' : ''}">${label}</a>`,
@@ -211,11 +211,13 @@ export function publicLayout({ title, description = '', body, active = '', setti
 <meta name="theme-color" content="#1C3A2E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,400&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..600;1,9..144,300..500&family=Hanken+Grotesk:wght@300;400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/styles.css">
+<link rel="stylesheet" href="/theme.css">
+<script src="/theme-init.js"></script>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 </head>
-<body class="public">
+<body class="public${bodyClass ? ` ${h(bodyClass)}` : ''}">
 <a class="skip" href="#main">Skip to content</a>
 ${announcement}
 <header class="site-header">
@@ -283,7 +285,13 @@ ${announcement}
     <p>Prices displayed in ${h(settings.default_currency || 'USD')}. Import duties may apply on arrival.</p>
   </div>
 </footer>
+<script src="/vendor/gsap/gsap.min.js" defer></script>
+<script src="/vendor/gsap/ScrollTrigger.min.js" defer></script>
+<script src="/vendor/gsap/SplitText.min.js" defer></script>
+<script src="/vendor/gsap/DrawSVGPlugin.min.js" defer></script>
+<script src="/vendor/gsap/MotionPathPlugin.min.js" defer></script>
 <script src="/app.js" defer></script>
+<script src="/theme.js" defer></script>
 </body>
 </html>`;
 }

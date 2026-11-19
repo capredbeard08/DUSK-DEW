@@ -62,80 +62,138 @@ export function homePage(base) {
   const hero = content.home_hero || { title: 'Skin, from first dew to last light.', body: '' };
   const featured = products.filter(({ product }) => product.featured).slice(0, 4);
   const collection = featured.length ? featured : products.slice(0, 4);
-  const ctaHref = settings.store_mode === 'live' ? '/shop' : '#waitlist';
-  const ctaLabel = settings.store_mode === 'live' ? 'Shop the collection' : 'Join the waitlist';
+  const live = settings.store_mode === 'live';
+  const ctaHref = live ? '/shop' : '#waitlist';
+  const ctaLabel = live ? 'Shop the collection' : 'Join the waitlist';
+  const statement = String(content.philosophy?.body || '').split(/\n{2,}/).filter(Boolean)[0] || '';
+  const rest = String(content.philosophy?.body || '').split(/\n{2,}/).filter(Boolean).slice(1).join('\n\n');
   const highlights = [
     ['01', 'Full INCI disclosure', 'Every product page carries the complete ingredient declaration, in order.'],
     ['02', 'Recorded batches', 'Each production run is logged with manufacturer, quantity and dates.'],
     ['03', 'Cleared destinations only', 'We open a country when shipping and regulatory clearance are in place.'],
   ];
+  const marquee = ['Full ingredient lists', 'Amber glass', 'Batch recorded', 'Nigerian-founded', 'International'];
+  const marqueeRow = marquee.map((t) => `<span>${h(t)}</span><span aria-hidden="true">✦</span>`).join('');
+  const stars = Array.from({ length: 28 }, (_, i) => {
+    const x = (i * 37 + 11) % 100;
+    const y = (i * 53 + 7) % 62;
+    const size = 1 + ((i * 7) % 3);
+    return `<i style="left:${x}%;top:${y}%;width:${size}px;height:${size}px;--tw:${(i % 5) + 2}s"></i>`;
+  }).join('');
+  const picks = products.slice(0, 3).map(({ product }) => product);
+
   return publicLayout({
     ...base,
-    title: 'Considered skincare, made in Lagos',
+    bodyClass: 'home',
+    title: 'Considered skincare from Nigeria',
     description: 'DUSK & DEW — Nigerian-founded skincare in amber glass. Full ingredient disclosure, recorded production batches, international shipping as destinations are cleared.',
     body: `
-    <section class="hero">
-      <div class="wrap hero-grid">
-        <div class="hero-copy">
-          <p class="eyebrow">Nigerian-founded · International</p>
-          <h1>${h(hero.title)}</h1>
+    <div class="intro" data-intro aria-hidden="true">
+      <svg class="intro-drop" viewBox="0 0 80 100" fill="none" stroke="currentColor" stroke-width="1.4">
+        <path data-draw d="M40 6 C40 6 8 44 8 66 a32 32 0 0 0 64 0 C72 44 40 6 40 6 Z"/>
+        <path data-draw d="M24 68 a16 16 0 0 0 14 14" stroke-linecap="round"/>
+      </svg>
+      <p class="intro-word">DUSK &amp; DEW</p>
+    </div>
+
+    <section class="stage" data-stage aria-label="Introduction">
+      <div class="sky sky-dawn" data-sky="dawn"></div>
+      <div class="sky sky-day" data-sky="day"></div>
+      <div class="sky sky-dusk" data-sky="dusk"></div>
+      <div class="sky sky-night" data-sky="night"></div>
+      <div class="stars" data-stars aria-hidden="true">${stars}</div>
+      <svg class="sun-track" viewBox="0 0 1000 600" preserveAspectRatio="none" aria-hidden="true">
+        <path id="sun-path" d="M -40 540 C 180 40, 820 40, 1040 540" fill="none" stroke="none"/>
+        <path id="moon-path" d="M 90 560 C 190 300, 420 150, 760 130" fill="none" stroke="none"/>
+      </svg>
+      <div class="sun" data-sun aria-hidden="true"><span></span></div>
+      <div class="moon" data-moon aria-hidden="true"><span></span></div>
+      <div class="grain" aria-hidden="true"></div>
+
+      <div class="stage-inner wrap">
+        <p class="eyebrow stage-eyebrow" data-hide>Nigerian-founded · International</p>
+        <h1 class="stage-title" data-title data-hide>${h(hero.title)}</h1>
+        <div class="stage-foot" data-stage-copy data-hide>
           <p class="lede">${h(hero.body)}</p>
-          <div class="hero-actions">
-            <a class="btn btn-dark" href="${ctaHref}">${h(ctaLabel)}</a>
-            <a class="btn btn-outline" href="/our-story">Our story</a>
+          <div class="stage-actions">
+            <a class="btn btn-dark" data-magnet href="${ctaHref}">${h(ctaLabel)}</a>
+            <a class="btn btn-ghost" data-magnet href="/our-story">Our story</a>
           </div>
-          <p class="hero-fine">${settings.payments_enabled === '1' ? 'Payments verified server-side. Duties and taxes may apply on arrival.' : 'Waitlist mode: register interest, no payment is taken.'}</p>
-        </div>
-        ${heroBottles(products.map(({ product }) => product))}
-      </div>
-    </section>
-
-    <section class="marquee" aria-label="Brand principles">
-      <div class="wrap marquee-inner">
-        <span>Full ingredient lists</span><span>·</span><span>Amber glass</span><span>·</span><span>Batch recorded</span><span>·</span><span>Made in Lagos</span><span>·</span><span>International</span>
-      </div>
-    </section>
-
-    <section class="section wrap">
-      <div class="section-head">
-        <div><p class="eyebrow">The first release</p><h2>Four steps, nothing extra</h2></div>
-        <a class="text-link" href="/shop">View all products →</a>
-      </div>
-      <div class="product-grid">${collection.map(({ product, stock }) => productCard(product, stock)).join('')}</div>
-    </section>
-
-    <section class="split wrap">
-      <div class="split-media">
-        <div class="editorial-frame">
-          ${bottleArt({ name: 'First Dew Hydrating Serum', net: '30 ml', tone: 'amber' })}
         </div>
       </div>
-      <div class="split-copy">
-        <p class="eyebrow">Philosophy</p>
-        <h2>${h(content.philosophy?.title || 'A quiet kind of care')}</h2>
-        ${paragraphs(content.philosophy?.body || '')}
-        <a class="text-link" href="/our-story">Read the full story →</a>
+
+      <div class="stage-bottles" aria-hidden="true">
+        ${picks
+          .map(
+            (p, i) => `<div class="sb sb-${i + 1}" data-bottle>${bottleArt({ name: p.name, net: p.net_contents, tone: p.image_tone, imageUrl: p.image_url })}</div>`,
+          )
+          .join('')}
+      </div>
+      <p class="scroll-hint" data-hint><span>Scroll</span><i></i></p>
+    </section>
+
+    <section class="marquee2" aria-label="Brand principles" data-marquee>
+      <div class="track" data-track>${marqueeRow}${marqueeRow}${marqueeRow}${marqueeRow}</div>
+    </section>
+
+    <section class="statement" data-statement>
+      <div class="wrap">
+        <p class="eyebrow">${h(content.philosophy?.title || 'Philosophy')}</p>
+        <p class="statement-text" data-words>${h(statement)}</p>
+        ${rest ? `<div class="statement-more reveal">${paragraphs(rest)}<a class="text-link" href="/our-story">Read the full story →</a></div>` : `<p class="reveal"><a class="text-link" href="/our-story">Read the full story →</a></p>`}
       </div>
     </section>
 
-    <section class="band">
-      <div class="wrap band-grid">
+    <section class="ritual" data-ritual>
+      <div class="ritual-pin" data-ritual-pin>
+        <div class="wrap ritual-head">
+          <div><p class="eyebrow">The first release</p><h2>Four steps, nothing extra</h2></div>
+          <a class="text-link" href="/shop">View all products →</a>
+        </div>
+        <div class="ritual-track" data-ritual-track>
+          ${collection
+            .map(
+              ({ product, stock }, i) => `<article class="step" data-step>
+            <span class="step-num" aria-hidden="true">0${i + 1}</span>
+            <a class="step-media" href="/shop/${h(product.slug)}" tabindex="-1" aria-hidden="true">
+              ${bottleArt({ name: product.name, net: product.net_contents, tone: product.image_tone, imageUrl: product.image_url })}
+              ${product.fulfilment_model === 'preorder' ? '<span class="card-flag">Preorder</span>' : ''}
+            </a>
+            <div class="step-body">
+              <p class="eyebrow">${h(product.category_name || 'Skincare')}</p>
+              <h3><a href="/shop/${h(product.slug)}">${h(product.name)}</a></h3>
+              <p class="step-sub">${h(product.subtitle || '')}</p>
+              <div class="step-foot"><span class="price">${money(product.price_cents, product.currency)}</span>${stockPill(stock)}</div>
+            </div>
+          </article>`,
+            )
+            .join('')}
+        </div>
+        <div class="ritual-progress" aria-hidden="true"><i data-ritual-bar></i></div>
+      </div>
+    </section>
+
+    <section class="promises">
+      <div class="wrap promises-grid">
         ${highlights
           .map(
-            ([num, title, body]) => `<div class="band-item"><p class="band-num">${num}</p><h3>${h(title)}</h3><p>${h(body)}</p></div>`,
+            ([num, title, body]) => `<div class="promise" data-promise>
+          <svg class="promise-line" viewBox="0 0 400 2" preserveAspectRatio="none" aria-hidden="true"><path data-draw d="M0 1 H400" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>
+          <p class="promise-num">${num}</p><h3>${h(title)}</h3><p>${h(body)}</p>
+        </div>`,
           )
           .join('')}
       </div>
     </section>
 
-    <section class="section wrap">
+    <section class="section wrap ingredients2">
       <div class="section-head">
         <div><p class="eyebrow">Ingredient transparency</p><h2>${h(content.ingredient_promise?.title || 'Full disclosure, every time')}</h2></div>
         <a class="text-link" href="/ingredients">Open the library →</a>
       </div>
       <div class="ingredient-band">
-        <div class="ingredient-copy">${paragraphs(content.ingredient_promise?.body || '')}</div>
-        <ul class="ingredient-chips">
+        <div class="ingredient-copy reveal">${paragraphs(content.ingredient_promise?.body || '')}</div>
+        <ul class="ingredient-chips" data-chips>
           ${ingredients
             .slice(0, 10)
             .map((ing) => `<li><a href="/ingredients/${h(ing.slug)}">${h(ing.inci_name)}</a><span>${h(ing.fn || '')}</span></li>`)
@@ -144,13 +202,13 @@ export function homePage(base) {
       </div>
     </section>
 
-    <section class="section section-tint" id="waitlist">
+    <section class="section section-tint waitlist2" id="waitlist">
       <div class="wrap split split-reverse">
         <div class="split-copy">
-          <p class="eyebrow">${settings.store_mode === 'live' ? 'First access' : 'Waitlist open'}</p>
-          <h2>Be told before the first batch leaves the studio</h2>
-          <p>We are finalising manufacturing, regulatory clearance and international shipping country by country. Register your interest and we will write to you when your destination opens — or when preordering is authorised.</p>
-          <p class="fine">Your details are used only for availability and occasional studio letters. No payment is collected.</p>
+          <p class="eyebrow">${live ? 'First access' : 'Waitlist open'}</p>
+          <h2 class="reveal">Be told before the first batch leaves the studio</h2>
+          <p class="reveal">We are finalising manufacturing, regulatory clearance and international shipping country by country. Register your interest and we will write to you when your destination opens — or when preordering is authorised.</p>
+          <p class="fine reveal">Your details are used only for availability and occasional studio letters. No payment is collected.</p>
         </div>
         ${waitlistForm({ settings, products, csrf })}
       </div>
