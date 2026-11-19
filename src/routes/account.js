@@ -38,6 +38,10 @@ export async function handleAccount({ db, request, env, url, path, method }) {
       return html(loginPage(ctx, { mode, error: 'Too many attempts. Please wait 15 minutes and try again.' }), 429, ctx.cookies);
     }
     const email = String(form.get('email') || '').trim().toLowerCase();
+    const accountLimit = await rateLimit(db, `login_acct:${mode}:${email}`, 15, 900);
+    if (!accountLimit.allowed) {
+      return html(loginPage(ctx, { mode, error: 'Too many attempts. Please wait 15 minutes and try again.' }), 429, ctx.cookies);
+    }
     const password = String(form.get('password') || '');
 
     if (mode === 'register') {

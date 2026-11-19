@@ -101,7 +101,7 @@ export async function sessionCsrf(env, path, jar) {
   return { csrf: match ? match[1] : '', html: page.text, jar: page.jar, status: page.status };
 }
 
-export async function payOrder(env, order, { eventId = null, amount = null, event = 'charge.success', status = 'success', signature = null } = {}) {
+export async function payOrder(env, order, { eventId = null, amount = null, currency = null, event = 'charge.success', status = 'success', signature = null } = {}) {
   const payload = JSON.stringify({
     event,
     data: {
@@ -109,6 +109,7 @@ export async function payOrder(env, order, { eventId = null, amount = null, even
       reference: order.payment_reference,
       status,
       amount: amount === null ? order.total_cents : amount,
+      currency: currency === null ? order.currency : currency,
       gateway_response: status === 'success' ? 'Successful' : 'Declined',
     },
   });
@@ -199,12 +200,19 @@ export async function signWebhook(payload, secret = WEBHOOK_SECRET) {
 }
 
 /** Full checkout through the public route, returning the created order. */
-export async function placeOrder(env, { product, qty = 1, email = 'buyer@example.com', name = 'Test Buyer', country = 'NG' } = {}) {
-  const page = await request(env, '/checkout');
+let buyerSeq = 0;
+export async function placeOrder(env, { product, qty = 1, email = null, name = 'Test Buyer', country = 'NG', ip = null } = {}) {
+  // Each simulated buyer gets their own email and address unless a test pins them,
+  // so the anti-hoarding limits only fire in tests that exercise them.
+  buyerSeq += 1;
+  email = email || `buyer${buyerSeq}@example.com`;
+  const headers = { 'cf-connecting-ip': ip || `10.1.${(buyerSeq >> 8) & 255}.${buyerSeq & 255}` };
+  const page = await request(env, '/checkout', { headers });
   const token = page.text.match(/name="_csrf" value="([^"]+)"/)[1];
   const res = await request(env, '/checkout', {
     method: 'POST',
     jar: page.jar,
+    headers,
     form: {
       _csrf: token,
       name,

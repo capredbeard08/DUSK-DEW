@@ -21,6 +21,7 @@ import {
 } from '../lib/inventory.js';
 import { createPaymentSession, enabledProviders, verifyReturn, completeOfflinePayment } from '../lib/payments.js';
 import { queueEmail } from '../lib/email.js';
+import { quoteOrder, pricesForProducts } from '../lib/pricing.js';
 import {
   homePage,
   shopPage,
@@ -419,10 +420,7 @@ async function handleCheckout({ db, request, env, url, ctx }) {
     if (!product) return redirect('/checkout?error=A%20product%20in%20your%20bag%20is%20no%20longer%20available.');
     const stock = stockBadge(product, product, ctx.settings);
     if (!stock.purchasable) return redirect(`/checkout?error=${encodeURIComponent(`${product.name} is not available to purchase right now.`)}`);
-    if (product.currency !== (ctx.settings.default_currency || 'USD')) {
-      return redirect('/checkout?error=This%20product%20is%20priced%20in%20another%20currency%20and%20cannot%20be%20combined%20in%20one%20order.');
-    }
-    lines.push({ product, stock, qty: item.qty, lineTotal: product.price_cents * item.qty });
+    lines.push({ product, stock, qty: item.qty });
   }
 
   const paymentsOn = ctx.settings.payments_enabled === '1';
@@ -448,7 +446,12 @@ async function handleCheckout({ db, request, env, url, ctx }) {
 
   const country = await one(db, 'SELECT * FROM supported_countries WHERE code = ? AND enabled = 1', countryCode);
   if (!country) return redirect('/checkout?error=We%20do%20not%20ship%20to%20that%20destination%20yet.');
-  if (country.shipping_cents === null) return redirect('/checkout?error=Shipping%20to%20that%20destination%20is%20not%20priced%20yet.');
+  const quote = await quoteOrder(db, { country, lines, defaultCurrency: ctx.settings.default_currency || 'USD' });
+  if (!quote.ok) return redirect(`/checkout?error=${encodeURIComponent(quote.error)}`);
+  quote.lines.forEach((priced, i) => {
+    lines[i].unitCents = priced.unitCents;
+    lines[i].lineTotal = priced.lineTotal;
+  });
   const providers = await enabledProviders(db, env, ctx.settings);
   if (!providers.length) return redirect('/checkout?error=No%20verified%20payment%20provider%20is%20configured.');
 
@@ -460,10 +463,15 @@ async function handleCheckout({ db, request, env, url, ctx }) {
     }
   }
 
-  const subtotal = lines.reduce((sum, l) => sum + l.lineTotal, 0);
-  const shipping = Number(country.shipping_cents);
-  const total = subtotal + shipping;
-  const currency = ctx.settings.default_currency || 'USD';
+  const { subtotal, shipping, duties, total, currency } = quote;
+
+  // Anti-hoarding: unpaid orders hold stock for 30 minutes, so cap how many one
+  // buyer or one address can open at a time.
+  const openOrders = await one(db, `SELECT COUNT(*) AS n FROM orders WHERE email = ? AND payment_status IN ('unpaid','pending') AND placed_at > ?`, email, new Date(Date.now() - 30 * 60 * 1000).toISOString());
+  const creation = await rateLimit(db, `checkout_create:${clientIp(request)}`, 6, 1800);
+  if ((openOrders && openOrders.n >= 3) || !creation.allowed) {
+    return redirect('/checkout?error=You%20have%20several%20orders%20awaiting%20payment.%20Please%20complete%20or%20wait%20for%20them%20to%20expire.');
+  }
 
   let customer = await one(db, 'SELECT * FROM customers WHERE email = ?', email);
   if (customer) {
@@ -512,8 +520,15 @@ async function handleCheckout({ db, request, env, url, ctx }) {
             `INSERT INTO order_items (id, order_id, product_id, name, sku, qty, unit_price_cents, line_total_cents, fulfilment_model, batch_item_id)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           )
-            .bind(line.id, orderId, line.product.id, line.product.name, line.product.sku, line.qty, line.product.price_cents, line.lineTotal, line.product.fulfilment_model, line.batchItemId || null),
+            .bind(line.id, orderId, line.product.id, line.product.name, line.product.sku, line.qty, line.unitCents, line.lineTotal, line.product.fulfilment_model, line.batchItemId || null),
         ),
+      ...(duties > 0
+        ? [
+            db
+              .prepare(`INSERT INTO order_charges (id, order_id, kind, label, amount_cents) VALUES (?, ?, 'duties', ?, ?)`)
+              .bind(uid('chg_'), orderId, 'Estimated import duties', duties),
+          ]
+        : []),
       ]);
       inserted = true;
     } catch (err) {
