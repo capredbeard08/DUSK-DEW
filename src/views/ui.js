@@ -5,10 +5,10 @@ import { money } from '../lib/email.js';
 export { h, money };
 
 export const TONES = {
-  amber: { glass: '#B07A33', glassDark: '#7C4E1B', label: '#F6EFE3' },
-  deep: { glass: '#6E4A2C', glassDark: '#43290F', label: '#F3EADB' },
-  soft: { glass: '#C79A62', glassDark: '#94682F', label: '#FBF4E8' },
-  green: { glass: '#3E5C4A', glassDark: '#223A2C', label: '#F1EBDF' },
+  amber: { glass: '#B5772E', glassDark: '#6B3F14', label: '#F3E8D0' },
+  deep: { glass: '#6A4125', glassDark: '#3B2210', label: '#EFE2C8' },
+  soft: { glass: '#C98F57', glassDark: '#8E5B2A', label: '#FAF4E6' },
+  green: { glass: '#3E5C4A', glassDark: '#1F3A2D', label: '#EEE1C8' },
 };
 
 export function fmtDate(iso, withTime = false) {
@@ -54,17 +54,33 @@ export function bottleArt({ name = '', net = '', tone = 'amber', imageUrl = null
       <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
     </linearGradient>
   </defs>
-  <ellipse cx="130" cy="316" rx="86" ry="12" fill="#1C3A2E" opacity="0.10"/>
-  <rect x="97" y="30" width="66" height="26" rx="6" fill="#2A241C"/>
-  <rect x="104" y="52" width="52" height="14" rx="3" fill="#3B3327"/>
+  <ellipse cx="130" cy="316" rx="86" ry="12" fill="#0F2A22" opacity="0.14"/>
+  <rect x="97" y="30" width="66" height="26" rx="6" fill="#1C1A14"/>
+  <rect x="104" y="52" width="52" height="14" rx="3" fill="#2B271D"/>
   <path d="M104 66h52c12 0 22 10 22 22v208c0 8-6 14-14 14H96c-8 0-14-6-14-14V88c0-12 10-22 22-22z" fill="url(#${id}a)"/>
-  <rect x="88" y="120" width="84" height="110" rx="4" fill="${t.label}" opacity="0.94"/>
-  <text x="130" y="150" text-anchor="middle" font-family="Georgia,serif" font-size="10" letter-spacing="2.4" fill="#1C3A2E">DUSK &amp; DEW</text>
-  <line x1="106" y1="160" x2="154" y2="160" stroke="#C8A96A" stroke-width="0.8"/>
-  <text x="130" y="182" text-anchor="middle" font-family="Georgia,serif" font-size="9" fill="#3B4B41">${h(truncate(name, 26))}</text>
-  <text x="130" y="206" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="7.5" letter-spacing="1" fill="#6B6F68">${h(net)}</text>
+  <rect x="86" y="116" width="88" height="118" rx="4" fill="${t.label}" opacity="0.96"/>
+  <text x="130" y="144" text-anchor="middle" font-family="Georgia,serif" font-size="8.2" letter-spacing="1.5" fill="#0F2A22">DUSK &amp; DEW</text>
+  <line x1="108" y1="153" x2="152" y2="153" stroke="#C4754F" stroke-width="0.9"/>
+  ${labelLines(name).map((line, i) => `<text x="130" y="${173 + i * 11}" text-anchor="middle" font-family="Georgia,serif" font-size="8.6" fill="#2F4A3C">${h(line)}</text>`).join('')}
+  <text x="130" y="218" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="6.6" letter-spacing="0.8" fill="#6B6A58">${h(truncate(net, 22))}</text>
   <path d="M118 78h8v200h-8z" fill="url(#${id}b)" opacity="0.5"/>
 </svg>`;
+}
+
+/** Split a product name over at most two label lines so it never overflows the label. */
+function labelLines(name) {
+  const text = String(name || '').trim();
+  if (text.length <= 15) return [text];
+  const words = text.split(/\s+/);
+  let best = [text, ''];
+  let bestGap = Infinity;
+  for (let i = 1; i < words.length; i += 1) {
+    const a = words.slice(0, i).join(' ');
+    const b = words.slice(i).join(' ');
+    const gap = Math.abs(a.length - b.length);
+    if (gap < bestGap) { best = [a, b]; bestGap = gap; }
+  }
+  return best.map((line) => truncate(line, 17)).filter(Boolean);
 }
 
 function truncate(value, max) {
@@ -208,7 +224,7 @@ export function publicLayout({ title, description = '', body, active = '', bodyC
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${h(title)} · DUSK &amp; DEW</title>
 <meta name="description" content="${h(description || 'DUSK & DEW — considered skincare in amber glass. Full ingredient disclosure, recorded production batches, international shipping.')}">
-<meta name="theme-color" content="#1C3A2E">
+<meta name="theme-color" content="#0F2A22">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..600;1,9..144,300..500&family=Hanken+Grotesk:wght@300;400;500;600&display=swap" rel="stylesheet">
