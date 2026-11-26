@@ -109,7 +109,7 @@
         var sunBox = q('span', sun);
         gsap.set([skyDay, skyDusk, skyNight], { opacity: 0 });
         gsap.set('[data-stars]', { opacity: 0 });
-        gsap.set(sun, { '--core': '#ffe3b0', '--glow': 'rgba(255,196,140,0.55)' });
+        gsap.set(sun, { '--core': '#f6d9a8', '--glow': 'rgba(222,160,100,0.5)' });
 
         var tl = gsap.timeline({
           defaults: { ease: 'none' },
@@ -134,8 +134,8 @@
           .to(skyDusk, { opacity: 1, duration: 3 }, 3)
           .to(skyNight, { opacity: 1, duration: 3 }, 6)
           .to('[data-stars]', { opacity: 1, duration: 2 }, 6.5)
-          .to(stage, { '--ink': '#f4ede0', '--ink-soft': '#d8cfbd', duration: 1.4 }, 3.6)
-          .to(sun, { '--core': '#ffb36b', '--glow': 'rgba(255,120,80,0.5)', duration: 2 }, 4);
+          .to(stage, { '--ink': '#faf4e6', '--ink-soft': '#eee1c8', duration: 1.4 }, 3.6)
+          .to(sun, { '--core': '#e08a5a', '--glow': 'rgba(196,117,79,0.55)', duration: 2 }, 4);
 
         if (window.MotionPathPlugin) {
           tl.to(sun, {
