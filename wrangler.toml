@@ -1,4 +1,4 @@
-# Optional: for deploying to your own Cloudflare account with wrangler.
+# Deployed to Cloudflare Workers via Workers Builds (Git integration): build `npm run build`, deploy `npx wrangler deploy`.
 # Freebuff Sites deployment uses freebuff.deploy.json instead.
 name = "dusk-and-dew"
 main = "dist/worker.js"
@@ -11,7 +11,7 @@ binding = "ASSETS"
 [[d1_databases]]
 binding = "DB"
 database_name = "dusk-and-dew"
-database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+database_id = "43433807-5dd5-439e-96d3-b44f1e3f2218"
 
 # Secrets (set with `wrangler secret put`, never in this file):
 #   PAYSTACK_SECRET_KEY, PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET, PAYPAL_WEBHOOK_ID,
