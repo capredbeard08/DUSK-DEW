@@ -396,9 +396,47 @@ export async function handleAdminSystem({ db, request, env, url, path, method, a
   if (path === '/admin/orders/export.csv') {
     if (!can(auth.user, 'orders.read')) return forbidden();
     const orders = await all(db, 'SELECT * FROM orders ORDER BY placed_at DESC LIMIT 10000');
+    // Item totals per order, and each customer's saved address book, fetched once
+    // (no per-order queries) and joined here.
+    const itemRows = await all(
+      db,
+      `SELECT order_id, SUM(qty) AS units, COUNT(*) AS products,
+              GROUP_CONCAT(qty || ' x ' || name || ' (' || sku || ')', '; ') AS summary
+       FROM order_items GROUP BY order_id`,
+    );
+    const items = new Map(itemRows.map((r) => [r.order_id, r]));
+    const addressRows = await all(db, 'SELECT * FROM addresses ORDER BY is_default DESC, created_at');
+    const book = new Map();
+    for (const a of addressRows) {
+      if (!book.has(a.customer_id)) book.set(a.customer_id, []);
+      book.get(a.customer_id).push(a);
+    }
+    const flat = (parts) => parts.map((p) => String(p || '').trim()).filter(Boolean).join(', ');
+    const key = (line1, postcode) => `${String(line1 || '').trim().toLowerCase()}|${String(postcode || '').trim().toLowerCase()}`;
     return csvResponse('dusk-dew-orders.csv', [
-      ['Reference', 'Placed', 'Email', 'Name', 'Country', 'Currency', 'Subtotal cents', 'Shipping cents', 'Total cents', 'Payment', 'Fulfilment', 'Provider', 'Payment reference', 'Tracking', 'Carrier', 'Paid at'],
-      ...orders.map((o) => [o.reference, o.placed_at, o.email, o.name, o.country, o.currency, o.subtotal_cents, o.shipping_cents, o.total_cents, o.payment_status, o.fulfilment_status, o.payment_provider || '', o.payment_reference || '', o.tracking_number || '', o.shipping_provider || '', o.paid_at || '']),
+      [
+        'Reference', 'Placed', 'Email', 'Name', 'Country', 'Currency', 'Subtotal cents', 'Shipping cents', 'Total cents', 'Payment', 'Fulfilment',
+        'Provider', 'Payment reference', 'Tracking', 'Carrier', 'Paid at',
+        'Items purchased', 'Distinct products', 'Products',
+        'Ship to name', 'Address line 1', 'Address line 2', 'City', 'Region', 'Postcode', 'Phone',
+        'Other saved addresses on account',
+      ],
+      ...orders.map((o) => {
+        const it = items.get(o.id);
+        const used = key(o.shipping_line1, o.shipping_postcode);
+        const others = (book.get(o.customer_id) || [])
+          .filter((a) => key(a.line1, a.postcode) !== used)
+          .map((a) => flat([a.line1, a.line2, a.city, a.region, a.postcode, a.country]) + (a.phone ? ` (tel ${a.phone})` : ''));
+        return [
+          o.reference, o.placed_at, o.email, o.name, o.country, o.currency, o.subtotal_cents, o.shipping_cents, o.total_cents,
+          o.payment_status, o.fulfilment_status, o.payment_provider || '', o.payment_reference || '', o.tracking_number || '',
+          o.shipping_provider || '', o.paid_at || '',
+          it ? Number(it.units) : 0, it ? Number(it.products) : 0, it ? it.summary : '',
+          o.shipping_name || o.name, o.shipping_line1 || '', o.shipping_line2 || '', o.shipping_city || '', o.shipping_region || '',
+          o.shipping_postcode || '', o.shipping_phone || '',
+          others.join(' | '),
+        ];
+      }),
     ]);
   }
 

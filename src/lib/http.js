@@ -33,13 +33,27 @@ export function jsonResponse(data, status = 200) {
   });
 }
 
+/**
+ * Neutralise spreadsheet formula injection: customer-controlled text such as a
+ * name or address must never be run as a formula when the CSV is opened in
+ * Excel or Sheets. Numbers pass through; plain digit/phone-like strings are
+ * left readable; anything else that starts with a formula trigger is prefixed.
+ */
+export function csvSafe(cell) {
+  if (cell === null || cell === undefined) return '';
+  if (typeof cell === 'number') return String(cell);
+  const value = String(cell);
+  if (/^[=+\-@\t\r]/.test(value) && !/^[+-]?[\d\s().-]+$/.test(value)) return `'${value}`;
+  return value;
+}
+
 export function csvResponse(filename, rows) {
   const body = rows
     .map((row) =>
       row
         .map((cell) => {
-          const value = cell === null || cell === undefined ? '' : String(cell);
-          return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+          const value = csvSafe(cell);
+          return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
         })
         .join(','),
     )
